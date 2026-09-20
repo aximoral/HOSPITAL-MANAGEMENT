@@ -19,6 +19,111 @@ def fetch_data(endpoint):
     except:
         return []
 
+
+
+def format_display_data(data, data_type):
+    if not data: return []
+    formatted = []
+    for item in data:
+        if data_type == "users":
+            formatted.append({
+                "User ID": item.get("id"),
+                "Username": item.get("username"),
+                "Role": item.get("role", "").capitalize()
+            })
+        elif data_type == "medicines":
+            formatted.append({
+                "Med ID": item.get("id"),
+                "Name": item.get("name"),
+                "Description": item.get("description"),
+                "Price ($)": f"{item.get('price', 0):.2f}",
+                "Stock": item.get("stock_quantity")
+            })
+        elif data_type == "appointments":
+            patient_info = ""
+            if item.get("patient"):
+                p = item["patient"]
+                patient_info = f"**Name:** {p.get('name')}<br>**Age:** {p.get('age')}<br>**Blood:** {p.get('blood_group')}"
+            else:
+                patient_info = f"Patient {item.get('patient_id')}"
+                
+            doctor_info = ""
+            if item.get("doctor"):
+                d = item["doctor"]
+                doctor_info = f"**Name:** {d.get('name')}<br>**Spec:** {d.get('specialization')}<br>**Contact:** {d.get('contact')}"
+            else:
+                doctor_info = f"Doctor {item.get('doctor_id')}"
+                
+            formatted.append({
+                "Apt ID": item.get("id"),
+                "Date & Time": item.get("datetime"),
+                "Patient Info": patient_info,
+                "Doctor Info": doctor_info,
+                "Status": item.get("status")
+            })
+        elif data_type == "records":
+            patient_info = ""
+            if item.get("patient"):
+                p = item["patient"]
+                patient_info = f"**Name:** {p.get('name')}<br>**Age:** {p.get('age')}<br>**Blood:** {p.get('blood_group')}"
+            else:
+                patient_info = f"Patient {item.get('patient_id')}"
+                
+            doctor_info = ""
+            if item.get("doctor"):
+                d = item["doctor"]
+                doctor_info = f"**Name:** {d.get('name')}<br>**Spec:** {d.get('specialization')}"
+            else:
+                doctor_info = f"Doctor {item.get('doctor_id')}"
+                
+            formatted.append({
+                "Record ID": item.get("id"),
+                "Patient": patient_info,
+                "Doctor": doctor_info,
+                "Diagnosis": item.get("diagnosis_history"),
+                "Vitals": item.get("vitals"),
+                "Notes": item.get("physician_notes")
+            })
+        elif data_type == "prescriptions":
+            patient_info = ""
+            if item.get("patient"):
+                p = item["patient"]
+                patient_info = f"**Name:** {p.get('name')}<br>**Age:** {p.get('age')}"
+            else:
+                patient_info = f"Patient {item.get('patient_id')}"
+                
+            doctor_info = ""
+            if item.get("doctor"):
+                d = item["doctor"]
+                doctor_info = f"**Name:** {d.get('name')}<br>**Spec:** {d.get('specialization')}<br>**Contact:** {d.get('contact')}"
+            else:
+                doctor_info = f"Doctor {item.get('doctor_id')}"
+                
+            medicine_info = ""
+            if item.get("medicine"):
+                m = item["medicine"]
+                medicine_info = f"**Name:** {m.get('name')}<br>**Desc:** {m.get('description')}"
+            else:
+                medicine_info = f"Medicine {item.get('medicine_id')}"
+                
+            formatted.append({
+                "Rx ID": item.get("id"),
+                "Doctor": doctor_info,
+                "Patient": patient_info,
+                "Medicine": medicine_info,
+                "Dosage": item.get("dosage"),
+                "Instructions": item.get("instructions")
+            })
+        else:
+            formatted.append(item)
+    return formatted
+
+def render_table(df):
+    if not df.empty:
+        st.markdown(df.to_markdown(index=False), unsafe_allow_html=True)
+    else:
+        st.info("No data available.")
+
 # Initialize Session State
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -234,7 +339,7 @@ if role == "admin":
         st.subheader("System Users")
         users = fetch_data("users")
         if users:
-            st.dataframe(pd.DataFrame(users))
+            render_table(pd.DataFrame(format_display_data(users, "users")))
 
     elif choice == "Hospital Queue Override":
         st.header("Appointments & Queue (Override)")
@@ -242,8 +347,8 @@ if role == "admin":
         
         apps = fetch_data("appointments")
         if apps:
-            df = pd.DataFrame(apps)
-            st.dataframe(df)
+            df = pd.DataFrame(format_display_data(apps, "appointments"))
+            render_table(df)
             
             with st.form("override_app"):
                 st.subheader("Override Status")
@@ -272,7 +377,7 @@ if role == "admin":
             if st.form_submit_button("Add Medicine"):
                 requests.post(f"{API_URL}/medicines/", json={"name": name, "description": desc, "price": price, "stock_quantity": stock})
                 st.success("Medicine added")
-        st.dataframe(pd.DataFrame(fetch_data("medicines")))
+        render_table(pd.DataFrame(format_display_data(fetch_data("medicines"), "medicines")))
 
 # ==========================================
 # DOCTOR VIEWS
@@ -288,7 +393,7 @@ elif role == "doctor":
         my_apps = [a for a in apps if a["doctor_id"] == doctor_id]
         
         if my_apps:
-            st.dataframe(pd.DataFrame(my_apps))
+            render_table(pd.DataFrame(format_display_data(my_apps, "appointments")))
             
             with st.form("manage_queue"):
                 app_id = st.selectbox("Select Appointment ID", [a["id"] for a in my_apps])
@@ -325,7 +430,7 @@ elif role == "doctor":
         my_records = [r for r in records if r["doctor_id"] == doctor_id]
         if my_records:
             st.subheader("Your Authored Records")
-            st.dataframe(pd.DataFrame(my_records))
+            render_table(pd.DataFrame(format_display_data(my_records, "records")))
 
     elif choice == "E-Prescribing":
         st.header("Prescriptions (Authorize)")
@@ -374,7 +479,7 @@ elif role == "patient":
         apps = fetch_data("appointments")
         my_apps = [a for a in apps if a["patient_id"] == patient_id]
         if my_apps:
-            st.dataframe(pd.DataFrame(my_apps))
+            render_table(pd.DataFrame(format_display_data(my_apps, "appointments")))
 
     elif choice == "My Health Record (EHR)":
         st.header("Clinical Records (Read Only)")
@@ -383,7 +488,7 @@ elif role == "patient":
         records = fetch_data("records")
         my_records = [r for r in records if r["patient_id"] == patient_id]
         if my_records:
-            st.dataframe(pd.DataFrame(my_records))
+            render_table(pd.DataFrame(format_display_data(my_records, "records")))
         else:
             st.info("No records found.")
 
@@ -394,7 +499,7 @@ elif role == "patient":
         prescriptions = fetch_data("prescriptions")
         my_rx = [p for p in prescriptions if p["patient_id"] == patient_id]
         if my_rx:
-            st.dataframe(pd.DataFrame(my_rx))
+            render_table(pd.DataFrame(format_display_data(my_rx, "prescriptions")))
         else:
             st.info("No prescriptions.")
             
