@@ -1,6 +1,8 @@
 import streamlit as st
 import requests
 import pandas as pd
+from streamlit_calendar import calendar
+from streamlit_tags import st_tags
 
 API_URL = "http://127.0.0.1:8000"
 
@@ -301,6 +303,34 @@ for item in menu:
 
 choice = st.session_state.current_page
 
+# Aggressive scroll lock for specific pages
+if choice in ["Encounter Queue", "E-Prescribing"]:
+    st.markdown('''
+    <style>
+    /* Lock scrolling on html/body and Streamlit app containers */
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stAppViewBlockContainer"], .stApp, [data-testid="stMain"], .stMain {
+        overflow: hidden !important;
+        overscroll-behavior: none;
+    }
+    .block-container {
+        padding-bottom: 0rem !important;
+        margin-bottom: 0rem !important;
+    }
+    footer { display: none !important; }
+    </style>
+    ''', unsafe_allow_html=True)
+
+
+st.markdown('''
+<style>
+/* Remove the yellow box from today's date in FullCalendar */
+.fc-day-today {
+    background-color: transparent !important;
+}
+</style>
+''', unsafe_allow_html=True)
+
+
 # ==========================================
 # ADMIN VIEWS
 # ==========================================
@@ -347,18 +377,33 @@ if role == "admin":
         
         apps = fetch_data("appointments")
         if apps:
-            df = pd.DataFrame(format_display_data(apps, "appointments"))
-            render_table(df)
-            
-            with st.form("override_app"):
-                st.subheader("Override Status")
-                app_id = st.selectbox("Select Appointment ID", [a["id"] for a in apps])
-                new_status = st.selectbox("New Status", ["Cancelled", "Open", "Pending", "Accepted", "Postponed"])
-                if st.form_submit_button("Apply Override"):
-                    res = requests.put(f"{API_URL}/appointments/{app_id}", json={"status": new_status})
-                    if res.status_code == 200:
-                        st.success("Status overridden.")
-                        st.rerun()
+            for app in apps:
+                with st.container(border=True):
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    
+                    patient = app.get("patient", {})
+                    doctor = app.get("doctor", {})
+                    p_name = patient.get("name", f"Patient {app.get('patient_id')}")
+                    d_name = doctor.get("name", f"Doctor {app.get('doctor_id')}")
+                    
+                    with col1:
+                        st.markdown(f"**Patient:** {p_name}<br>**Doctor:** {d_name}<br>**Time:** `{app.get('datetime')}`", unsafe_allow_html=True)
+                        
+                    with col2:
+                        status = app.get("status")
+                        color = "#28a745" if status in ["Accepted", "Completed"] else "#ffc107" if status == "Pending" else "#dc3545"
+                        st.markdown(f"**Status:**<br><span style='color:{color}; font-weight:bold;'>{status}</span>", unsafe_allow_html=True)
+                        
+                    with col3:
+                        opts = ["Cancelled", "Open", "Pending", "Accepted", "Postponed", "Completed"]
+                        idx = opts.index(status) if status in opts else 0
+                        new_status = st.selectbox("Action", opts, index=idx, key=f"adm_app_{app['id']}", label_visibility="collapsed")
+                        
+                        if new_status != status:
+                            requests.put(f"{API_URL}/appointments/{app['id']}", json={"status": new_status})
+                            st.rerun()
+                            
+            st.markdown("<hr>", unsafe_allow_html=True)
         else:
             st.info("No appointments in system.")
 
@@ -387,24 +432,98 @@ elif role == "doctor":
     
     if choice == "Encounter Queue":
         st.header("Appointments & Queue")
-        st.write("Accept, reject, postpone, and mark visits completed.")
+        st.write("Click on a day in the calendar to view and manage requested time slots.")
         
         apps = fetch_data("appointments")
         my_apps = [a for a in apps if a["doctor_id"] == doctor_id]
         
-        if my_apps:
-            render_table(pd.DataFrame(format_display_data(my_apps, "appointments")))
+        if "doc_selected_date" not in st.session_state:
+            st.session_state.doc_selected_date = None
             
-            with st.form("manage_queue"):
-                app_id = st.selectbox("Select Appointment ID", [a["id"] for a in my_apps])
-                new_status = st.selectbox("Update Status", ["Accepted", "Rejected", "Postponed", "Completed"])
-                if st.form_submit_button("Update Status"):
-                    res = requests.put(f"{API_URL}/appointments/{app_id}", json={"status": new_status})
-                    if res.status_code == 200:
-                        st.success("Queue updated.")
-                        st.rerun()
-        else:
-            st.info("No appointments assigned to you.")
+        cal_data = st.session_state.get("doctor_cal", {})
+        if cal_data and cal_data.get("callback") == "dateClick":
+            st.session_state.doc_selected_date = cal_data["dateClick"]["date"].split("T")[0]
+        elif cal_data and cal_data.get("callback") == "eventClick":
+            st.session_state.doc_selected_date = cal_data["eventClick"]["event"]["extendedProps"]["exact_date"]
+            
+        events = []
+        if st.session_state.doc_selected_date:
+            events.append({
+                "start": st.session_state.doc_selected_date,
+                "display": "background",
+                "backgroundColor": "rgba(0, 210, 255, 0.3)" # Cyan highlight
+            })
+            
+        for app in my_apps:
+            date_str = app["datetime"].split(" ")[0] if " " in app["datetime"] else app["datetime"]
+            status = app.get("status")
+            color = "#ffc107" if status == "Pending" else "#28a745" if status in ["Accepted", "Completed"] else "#dc3545"
+            time_part = app["datetime"].split(" ", 1)[-1] if " " in app["datetime"] else ""
+            events.append({
+                "title": time_part,
+                "start": date_str,
+                "backgroundColor": color,
+                "borderColor": color,
+                "extendedProps": {"exact_date": date_str}
+            })
+            
+        cal_col, list_col = st.columns([1.5, 1], gap="large")
+        
+        with cal_col:
+            cal_state = calendar(events=events, options={
+                "headerToolbar": {"left": "prev,next", "center": "title", "right": "today"},
+                "initialView": "dayGridMonth",
+                "height": 420,
+                "timeZone": "UTC"
+            }, custom_css='''
+            .fc-daygrid-day-frame, .fc-event { cursor: pointer !important; transition: background-color 0.2s ease !important; }
+            .fc-daygrid-day-frame:hover { background-color: rgba(255, 255, 255, 0.05) !important; }
+            .fc-day-today { background-color: transparent !important; }
+            .fc-scroller { overflow: hidden !important; }
+            .fc-daygrid-day-frame { min-height: 30px !important; }
+            .fc-daygrid-day-events { min-height: 10px !important; margin-bottom: 0px !important; }
+            .fc-daygrid-event-harness { margin-top: 1px !important; }
+            .fc { border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important; }
+            ''', key="doctor_cal")
+        
+        if cal_state.get("callback") == "dateClick":
+            st.session_state.doc_selected_date = cal_state["dateClick"]["date"].split("T")[0]
+        elif cal_state.get("callback") == "eventClick":
+            st.session_state.doc_selected_date = cal_state["eventClick"]["event"]["extendedProps"]["exact_date"]
+            
+        selected_date = st.session_state.doc_selected_date
+            
+        with list_col:
+            if selected_date:
+                st.subheader(f"Requests for {selected_date}")
+                
+                day_apps = [a for a in my_apps if a["datetime"].startswith(selected_date)]
+                
+                if day_apps:
+                    for app in day_apps:
+                        with st.container(border=True):
+                            col1, col2 = st.columns([2, 1])
+                            
+                            patient = app.get("patient", {})
+                            p_name = patient.get("name", f"Patient {app.get('patient_id')}")
+                            
+                            with col1:
+                                st.markdown(f"**Patient:** {p_name}<br>**Time:** `{app.get('datetime').split(' ')[-2] + ' ' + app.get('datetime').split(' ')[-1] if ' ' in app.get('datetime') else app.get('datetime')}`", unsafe_allow_html=True)
+                                
+                            with col2:
+                                status = app.get("status")
+                                opts = ["Pending", "Accepted", "Rejected", "Postponed", "Completed"]
+                                idx = opts.index(status) if status in opts else 0
+                                new_status = st.selectbox("Action", opts, index=idx, key=f"doc_app_{app['id']}", label_visibility="collapsed")
+                                
+                                if new_status != status:
+                                    requests.put(f"{API_URL}/appointments/{app['id']}", json={"status": new_status})
+                                    fetch_data.clear()
+                                    st.rerun()
+                else:
+                    st.info("No appointments on this day.")
+            else:
+                st.info("👈 Select a date on the calendar to manage slots.")
 
     elif choice == "Clinical Records (EHR)":
         st.header("Clinical Records (Scoped Write)")
@@ -439,18 +558,55 @@ elif role == "doctor":
         patients = fetch_data("patients")
         medicines = fetch_data("medicines")
         
-        with st.form("issue_rx"):
+        if patients:
             patient_id = st.selectbox("Patient", [p["id"] for p in patients], format_func=lambda x: next(p["name"] for p in patients if p["id"] == x))
-            medicine_id = st.selectbox("Medicine", [m["id"] for m in medicines], format_func=lambda x: next(m["name"] for m in medicines if m["id"] == x))
+            
+            # Using st_tags to allow both selecting from suggestions AND typing a custom value in the SAME input box
+            med_names = [m["name"] for m in medicines]
+            selected_meds = st_tags(
+                label='Medicine (Type or select from suggestions)',
+                text='Press enter to add',
+                value=[],
+                suggestions=med_names,
+                maxtags=1,
+                key='med_tags'
+            )
+                
             dosage = st.text_input("Dosage")
             instructions = st.text_area("Instructions")
             
-            if st.form_submit_button("Issue Prescription"):
-                requests.post(f"{API_URL}/prescriptions/", json={
-                    "doctor_id": doctor_id, "patient_id": patient_id, "medicine_id": medicine_id,
-                    "dosage": dosage, "instructions": instructions
-                })
-                st.success("Prescription issued.")
+            if st.button("Issue Prescription", type="primary"):
+                if not selected_meds:
+                    st.error("Please enter or select a medicine.")
+                else:
+                    med_name = selected_meds[0]
+                    
+                    # Try to find the medicine in the existing inventory by name
+                    existing_med = next((m for m in medicines if m["name"].lower() == med_name.lower()), None)
+                    
+                    if existing_med:
+                        final_med_id = existing_med["id"]
+                    else:
+                        # Create the custom medicine dynamically in the DB first
+                        res = requests.post(f"{API_URL}/medicines/", json={
+                            "name": med_name, "description": "Custom prescribed by doctor", "price": 0.0, "stock_quantity": 0
+                        })
+                        if res.status_code == 200:
+                            final_med_id = res.json()["id"]
+                        else:
+                            st.error("Error saving custom medicine to database.")
+                            final_med_id = None
+                            
+                    if final_med_id:
+                        res = requests.post(f"{API_URL}/prescriptions/", json={
+                            "doctor_id": doctor_id, "patient_id": patient_id, "medicine_id": final_med_id,
+                            "dosage": dosage, "instructions": instructions
+                        })
+                        if res.status_code == 200:
+                            st.success("Prescription successfully issued.")
+                            fetch_data.clear() # Clear cache so the new medicine shows up instantly!
+        else:
+            st.warning("No patients available.")
 
 # ==========================================
 # PATIENT VIEWS
@@ -460,21 +616,69 @@ elif role == "patient":
     
     if choice == "Book Appointment":
         st.header("Appointments & Queue (Book)")
-        st.write("Create booking in open slots, view own upcoming visits.")
+        st.write("Click a day on the calendar to select your preferred date.")
         
-        doctors = fetch_data("doctors")
-        
-        with st.form("book_visit"):
-            doc_id = st.selectbox("Select Doctor", [d["id"] for d in doctors], format_func=lambda x: next(d["name"] for d in doctors if d["id"] == x))
-            dt = st.text_input("Requested Date & Time (e.g. 2026-10-01 10:00 AM)")
+        # Persistent state to prevent double-rerun reset
+        if "patient_selected_date" not in st.session_state:
+            st.session_state.patient_selected_date = None
             
-            if st.form_submit_button("Request Booking"):
-                res = requests.post(f"{API_URL}/appointments/", json={
-                    "patient_id": patient_id, "doctor_id": doc_id, "datetime": dt, "status": "Pending"
-                })
-                if res.status_code == 200:
-                    st.success("Booking requested! Waiting for doctor to accept.")
+        cal_data = st.session_state.get("patient_cal", {})
+        if cal_data and cal_data.get("callback") == "dateClick":
+            st.session_state.patient_selected_date = cal_data["dateClick"]["date"].split("T")[0]
+            
+        events = []
+        if st.session_state.patient_selected_date:
+            events.append({
+                "start": st.session_state.patient_selected_date,
+                "display": "background",
+                "backgroundColor": "rgba(0, 210, 255, 0.3)" # Cyan highlight
+            })
+        
+        cal_col, form_col = st.columns([1.5, 1], gap="large")
+        
+        with cal_col:
+            cal_state = calendar(events=events, options={
+                "headerToolbar": {"left": "prev,next", "center": "title", "right": "today"},
+                "initialView": "dayGridMonth",
+                "height": 420,
+                "timeZone": "UTC"
+            }, custom_css='''
+            .fc-daygrid-day-frame, .fc-event { cursor: pointer !important; transition: background-color 0.2s ease !important; }
+            .fc-daygrid-day-frame:hover { background-color: rgba(255, 255, 255, 0.05) !important; }
+            .fc-day-today { background-color: transparent !important; }
+            .fc-scroller { overflow: hidden !important; }
+            .fc-daygrid-day-frame { min-height: 30px !important; }
+            .fc-daygrid-day-events { min-height: 10px !important; margin-bottom: 0px !important; }
+            .fc-daygrid-event-harness { margin-top: 1px !important; }
+            .fc { border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important; }
+            ''', key="patient_cal")
+            
+            if cal_state.get("callback") == "dateClick":
+                st.session_state.patient_selected_date = cal_state["dateClick"]["date"].split("T")[0]
+                
+        selected_date = st.session_state.patient_selected_date
+            
+        with form_col:
+            if selected_date:
+                st.subheader(f"Book for {selected_date}")
+                doctors = fetch_data("doctors")
+                
+                with st.form("book_visit"):
+                    doc_id = st.selectbox("Select Doctor", [d["id"] for d in doctors], format_func=lambda x: next(d["name"] for d in doctors if d["id"] == x))
+                    time_slot = st.selectbox("Select Time Slot", ["09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "01:00 PM", "01:30 PM", "02:00 PM", "02:30 PM", "03:00 PM", "03:30 PM", "04:00 PM"])
                     
+                    if st.form_submit_button("Request Booking", type="primary"):
+                        dt = f"{selected_date} {time_slot}"
+                        res = requests.post(f"{API_URL}/appointments/", json={
+                            "patient_id": patient_id, "doctor_id": doc_id, "datetime": dt, "status": "Pending"
+                        })
+                        if res.status_code == 200:
+                            st.success("Booking requested! Waiting for doctor to accept.")
+                            fetch_data.clear()
+            else:
+                st.info("👈 Select a date on the calendar to see available slots.")
+                
+        st.markdown("<hr>", unsafe_allow_html=True)
         st.subheader("My Upcoming Visits")
         apps = fetch_data("appointments")
         my_apps = [a for a in apps if a["patient_id"] == patient_id]
