@@ -2,13 +2,14 @@ import streamlit as st
 import requests
 import pandas as pd
 
-API_URL = "http://localhost:8000"
+API_URL = "http://127.0.0.1:8000"
 
 st.set_page_config(page_title="Hospital Management System", layout="wide")
 
 import streamlit.components.v1 as components
 
 # Helper function to fetch data
+@st.cache_data(ttl=2)
 def fetch_data(endpoint):
     try:
         response = requests.get(f"{API_URL}/{endpoint}/")
@@ -399,11 +400,22 @@ elif role == "patient":
             
         st.subheader("Reserve Medication at Pharmacy")
         medicines = fetch_data("medicines")
-        with st.form("reserve"):
+        if medicines:
             med_id = st.selectbox("Medicine", [m["id"] for m in medicines], format_func=lambda x: next(m["name"] for m in medicines if m["id"] == x))
-            qty = st.number_input("Quantity", min_value=1)
             
-            if st.form_submit_button("Reserve"):
+            # Find selected medicine price
+            selected_med = next(m for m in medicines if m["id"] == med_id)
+            unit_price = selected_med.get("price", 0.0)
+            
+            qty = st.number_input("Quantity", min_value=1)
+            total_price = unit_price * qty
+            
+            # Show the requested pricing boxes
+            col1, col2 = st.columns(2)
+            col1.info(f"**Price per unit:** ₹{unit_price:,.2f}")
+            col2.success(f"**Total Amount:** ₹{total_price:,.2f}")
+            
+            if st.button("Reserve"):
                 res = requests.post(f"{API_URL}/reservations/", json={
                     "patient_id": patient_id, "medicine_id": med_id, "quantity": qty
                 })
@@ -412,3 +424,5 @@ elif role == "patient":
                     st.balloons()
                 else:
                     st.error("Failed. Might be out of stock.")
+        else:
+            st.warning("No medicines available right now.")
