@@ -1,6 +1,10 @@
 import streamlit as st
 import requests
 import pandas as pd
+import importlib
+import backend.pdf_generator
+importlib.reload(backend.pdf_generator)
+from backend.pdf_generator import generate_invoice_pdf
 from streamlit_calendar import calendar
 from streamlit_tags import st_tags
 
@@ -162,7 +166,7 @@ def format_display_data(data, data_type):
                 "Med ID": item.get("id"),
                 "Name": item.get("name"),
                 "Description": item.get("description"),
-                "Price ($)": f"{item.get('price', 0):.2f}",
+                "Price (₹)": f"{item.get('price', 0):.2f}",
                 "Stock": item.get("stock_quantity")
             })
         elif data_type == "appointments":
@@ -392,11 +396,11 @@ role = st.session_state.role
 
 # Role-based menu
 if role == "admin":
-    menu = ["User Management", "Hospital Queue Override", "System Audits", "Medicine Inventory"]
+    menu = ["User Management", "Ward & Bed Management", "Hospital Queue Override", "System Audits", "Medicine Inventory"]
 elif role == "doctor":
-    menu = ["Encounter Queue", "Clinical Records (EHR)", "E-Prescribing"]
+    menu = ["Encounter Queue", "Clinical Records (EHR)", "E-Prescribing", "Telemedicine Chat"]
 elif role == "patient":
-    menu = ["Book Appointment", "My Health Record (EHR)", "My Prescriptions & Pharmacy"]
+    menu = ["Book Appointment", "My Health Record (EHR)", "My Prescriptions & Pharmacy", "Billing & Invoices", "Telemedicine Chat"]
 else:
     menu = []
 
@@ -531,6 +535,64 @@ if role == "admin":
                                 st.session_state.confirm_delete_user = user['id']
                                 st.rerun()
 
+    
+    elif choice == "Ward & Bed Management":
+        st.header("Ward & Bed Management")
+        st.write("Visually manage hospital bed allocations and patient admissions.")
+        
+        beds = fetch_data("beds")
+        patients = fetch_data("patients")
+        
+        # If no beds exist, initialize some dummy beds
+        if not beds:
+            st.info("Initializing hospital wards...")
+            for i in range(1, 11):
+                requests.post(f"{API_URL}/beds/", json={"ward": "General Ward", "bed_number": f"G-{i}", "status": "Available"})
+            for i in range(1, 6):
+                requests.post(f"{API_URL}/beds/", json={"ward": "ICU", "bed_number": f"ICU-{i}", "status": "Available"})
+            st.rerun()
+            
+        # Group beds by ward
+        wards = {}
+        for b in beds:
+            wards.setdefault(b['ward'], []).append(b)
+            
+        for ward_name, ward_beds in wards.items():
+            st.subheader(f"🛏️ {ward_name}")
+            cols = st.columns(5)
+            for idx, bed in enumerate(ward_beds):
+                with cols[idx % 5]:
+                    with st.container(border=True):
+                        # Color coding
+                        color = "#28a745" if bed['status'] == 'Available' else "#dc3545" if bed['status'] == 'Occupied' else "#ffc107"
+                        st.markdown(f"<h3 style='text-align:center; color:{color}; margin-bottom:0;'>{bed['bed_number']}</h3>", unsafe_allow_html=True)
+                        st.markdown(f"<p style='text-align:center; font-size:12px; margin-top:0;'>{bed['status']}</p>", unsafe_allow_html=True)
+                        
+                        if bed['status'] == 'Available':
+                            with st.popover("Assign Patient", use_container_width=True):
+                                selected_p = st.selectbox("Select Patient", [p['id'] for p in patients], format_func=lambda x: next(p['name'] for p in patients if p['id']==x), key=f"sel_{bed['id']}")
+                                if st.button("Admit", key=f"admit_{bed['id']}", type="primary"):
+                                    requests.put(f"{API_URL}/beds/{bed['id']}", json={"ward": bed['ward'], "bed_number": bed['bed_number'], "status": "Occupied", "patient_id": selected_p})
+                                    # Log action
+                                    requests.post(f"{API_URL}/audits/", json={"user": "Admin", "action": f"Admitted Patient {selected_p} to {bed['bed_number']}", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                                    fetch_data.clear()
+                                    st.rerun()
+                                    
+                        elif bed['status'] == 'Occupied':
+                            p_name = next((p['name'] for p in patients if p['id'] == bed['patient_id']), "Unknown")
+                            st.caption(f"👤 {p_name}")
+                            if st.button("Discharge", key=f"dis_{bed['id']}", use_container_width=True):
+                                requests.put(f"{API_URL}/beds/{bed['id']}", json={"ward": bed['ward'], "bed_number": bed['bed_number'], "status": "Cleaning", "patient_id": None})
+                                requests.post(f"{API_URL}/audits/", json={"user": "Admin", "action": f"Discharged Patient {bed['patient_id']} from {bed['bed_number']}", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                                fetch_data.clear()
+                                st.rerun()
+                                
+                        elif bed['status'] == 'Cleaning':
+                            if st.button("Mark Clean", key=f"clean_{bed['id']}", use_container_width=True):
+                                requests.put(f"{API_URL}/beds/{bed['id']}", json={"ward": bed['ward'], "bed_number": bed['bed_number'], "status": "Available", "patient_id": None})
+                                fetch_data.clear()
+                                st.rerun()
+
     elif choice == "Hospital Queue Override":
         st.header("Appointments & Queue (Override)")
         st.write("Hospital-wide schedule adjustments and cancellations.")
@@ -568,9 +630,37 @@ if role == "admin":
             st.info("No appointments in system.")
 
     elif choice == "System Audits":
-        st.header("Clinical Records & Prescriptions")
-        st.error("NO READ/WRITE ACCESS. Metadata audit only (HIPAA / GDPR safe-harbor).")
-        st.write("You are denied access to view medical details or medication orders.")
+        st.header("HIPAA System Audit Logs")
+        st.write("Tamper-proof terminal logging of all system actions.")
+        
+        audits = fetch_data("audits")
+        
+        st.markdown('''
+        <style>
+        .audit-terminal {
+            background-color: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            color: #00ff00;
+            height: 600px;
+            overflow-y: auto;
+        }
+        .audit-line { margin: 0; padding: 2px 0; font-size: 13px; border-bottom: 1px dotted #30363d; }
+        .audit-time { color: #8b949e; margin-right: 15px; }
+        .audit-user { color: #58a6ff; font-weight: bold; margin-right: 15px; }
+        </style>
+        ''', unsafe_allow_html=True)
+        
+        if audits:
+            log_html = "<div class='audit-terminal'>"
+            for log in audits:
+                log_html += f"<div class='audit-line'><span class='audit-time'>[{log['timestamp']}]</span><span class='audit-user'>{log['user']}</span> > {log['action']}</div>"
+            log_html += "</div>"
+            st.markdown(log_html, unsafe_allow_html=True)
+        else:
+            st.info("No audit logs available.")
         
     elif choice == "Medicine Inventory":
         st.header("Medicine Inventory Management")
@@ -768,6 +858,40 @@ elif role == "doctor":
         else:
             st.warning("No patients available.")
 
+
+    elif choice == "Telemedicine Chat":
+        st.header("Telemedicine Chat")
+        st.write("Securely message your patients.")
+        
+        patients = fetch_data("patients")
+        if not patients:
+            st.warning("No patients registered yet.")
+        else:
+            selected_patient_id = st.selectbox("Select Patient to Message", [p['id'] for p in patients], format_func=lambda x: next(p['name'] for p in patients if p['id']==x))
+            
+            messages = fetch_data("messages")
+            patient_user_id = next((p['user_id'] for p in patients if p['id'] == selected_patient_id), None)
+            doc_user_id = st.session_state.user_id
+            
+            # Filter messages between this doctor and the selected patient
+            chat_history = [m for m in messages if (m['sender_id'] == doc_user_id and m['receiver_id'] == patient_user_id) or (m['sender_id'] == patient_user_id and m['receiver_id'] == doc_user_id)]
+            
+            chat_html = "<div style='height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 10px; background-color: #0e1117; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);'>"
+            for msg in chat_history:
+                is_me = msg['sender_id'] == doc_user_id
+                align = "flex-end" if is_me else "flex-start"
+                bg = "#00d2ff" if is_me else "#1f242d"
+                color = "white" if is_me else "#e6e6e6"
+                chat_html += f"<div style='align-self: {align}; background-color: {bg}; color: {color}; padding: 10px 15px; border-radius: 15px; max-width: 70%; width: fit-content;'>{msg['content']}<br><span style='font-size:10px; opacity: 0.7;'>{msg['timestamp']}</span></div>"
+            chat_html += "</div>"
+            st.markdown(chat_html, unsafe_allow_html=True)
+            
+            new_msg = st.chat_input("Type your message to the patient...")
+            if new_msg:
+                requests.post(f"{API_URL}/messages/", json={"sender_id": doc_user_id, "receiver_id": patient_user_id, "content": new_msg, "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                fetch_data.clear()
+                st.rerun()
+
 # ==========================================
 # PATIENT VIEWS
 # ==========================================
@@ -889,9 +1013,94 @@ elif role == "patient":
                     "patient_id": patient_id, "medicine_id": med_id, "quantity": qty
                 })
                 if res.status_code == 200:
-                    st.success("Reserved for pickup!")
-                    st.balloons()
+                    med_name = selected_med.get("name", "Medicine")
+                    requests.post(f"{API_URL}/invoices/", json={
+                        "patient_id": patient_id,
+                        "amount": total_price,
+                        "description": f"Pharmacy: {qty}x {med_name}",
+                        "created_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
+                    requests.post(f"{API_URL}/audits/", json={"user": f"Patient {patient_id}", "action": f"Reserved {qty}x {med_name}", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                    
+                    st.toast("Reserved for pickup! 🎈 Invoice generated.")
+                    fetch_data.clear()
+                    st.rerun()
                 else:
                     st.error("Failed. Might be out of stock.")
         else:
             st.warning("No medicines available right now.")
+
+    elif choice == "Telemedicine Chat":
+        st.header("Telemedicine Chat")
+        st.write("Securely message your doctors.")
+        
+        doctors = fetch_data("doctors")
+        if not doctors:
+            st.warning("No doctors available.")
+        else:
+            selected_doc_id = st.selectbox("Select Doctor to Message", [d['id'] for d in doctors], format_func=lambda x: next(d['name'] for d in doctors if d['id']==x))
+            
+            messages = fetch_data("messages")
+            doc_user_id = next((d['user_id'] for d in doctors if d['id'] == selected_doc_id), None)
+            pat_user_id = st.session_state.user_id
+            
+            chat_history = [m for m in messages if (m['sender_id'] == pat_user_id and m['receiver_id'] == doc_user_id) or (m['sender_id'] == doc_user_id and m['receiver_id'] == pat_user_id)]
+            
+            chat_html = "<div style='height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 10px; background-color: #0e1117; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);'>"
+            for msg in chat_history:
+                is_me = msg['sender_id'] == pat_user_id
+                align = "flex-end" if is_me else "flex-start"
+                bg = "#00d2ff" if is_me else "#1f242d"
+                color = "white" if is_me else "#e6e6e6"
+                chat_html += f"<div style='align-self: {align}; background-color: {bg}; color: {color}; padding: 10px 15px; border-radius: 15px; max-width: 70%; width: fit-content;'>{msg['content']}<br><span style='font-size:10px; opacity: 0.7;'>{msg['timestamp']}</span></div>"
+            chat_html += "</div>"
+            st.markdown(chat_html, unsafe_allow_html=True)
+            
+            new_msg = st.chat_input("Type your message to the doctor...")
+            if new_msg:
+                requests.post(f"{API_URL}/messages/", json={"sender_id": pat_user_id, "receiver_id": doc_user_id, "content": new_msg, "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                fetch_data.clear()
+                st.rerun()
+
+    elif choice == "Billing & Invoices":
+        st.header("Billing & Payments")
+        st.write("Manage and pay your hospital invoices securely.")
+        
+        invoices = fetch_data("invoices")
+        my_invoices = [inv for inv in invoices if inv['patient_id'] == patient_id]
+        
+        if not my_invoices:
+            st.success("You have no pending invoices! 🎉")
+        else:
+            for inv in my_invoices:
+                with st.container(border=True):
+                    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+                    c1.write(f"**Description:** {inv['description']}")
+                    c2.write(f"**Amount:** ₹{inv['amount']:,.2f}")
+                    color = "#28a745" if inv['status'] == "Paid" else "#dc3545"
+                    c3.markdown(f"**Status:** <span style='color:{color}'>{inv['status']}</span>", unsafe_allow_html=True)
+                    
+                    if inv['status'] == "Pending":
+                        with c4:
+                            with st.popover("Pay Now"):
+                                st.write("Mock Secure Checkout")
+                                st.text_input("Card Number", placeholder="XXXX-XXXX-XXXX-XXXX", key=f"card_{inv['id']}")
+                                c_a, c_b = st.columns(2)
+                                c_a.text_input("Expiry", placeholder="MM/YY", key=f"exp_{inv['id']}")
+                                c_b.text_input("CVV", placeholder="123", key=f"cvv_{inv['id']}")
+                                if st.button("Submit Payment", type="primary", key=f"pay_{inv['id']}"):
+                                    requests.put(f"{API_URL}/invoices/{inv['id']}/pay")
+                                    requests.post(f"{API_URL}/audits/", json={"user": f"Patient {patient_id}", "action": f"Paid Invoice #{inv['id']} (₹{inv['amount']})", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                                    st.toast("Payment Successful! ✅")
+                                    fetch_data.clear()
+                                    st.rerun()
+                    else:
+                        with c4:
+                            pdf_bytes = generate_invoice_pdf(inv)
+                            st.download_button(
+                                label="📄 Export PDF",
+                                data=pdf_bytes,
+                                file_name=f"HMS_Invoice_{inv['id']}.pdf",
+                                mime="application/pdf",
+                                key=f"pdf_{inv['id']}"
+                            )

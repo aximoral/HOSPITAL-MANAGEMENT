@@ -96,3 +96,43 @@ class ClinicalRecord(Base):
     
     patient = relationship("Patient")
     doctor = relationship("Doctor")
+
+
+class Bed(Base):
+    __tablename__ = "beds"
+    id = Column(Integer, primary_key=True, index=True)
+    ward = Column(String)
+    bed_number = Column(String)
+    status = Column(String, default="Available") # "Available", "Occupied", "Cleaning"
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=True)
+    
+    patient = relationship("Patient")
+
+class Invoice(Base):
+    __tablename__ = "invoices"
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("patients.id"))
+    amount = Column(Float)
+    description = Column(String)
+    status = Column(String, default="Pending") # "Pending", "Paid"
+    created_at = Column(String)
+    
+    patient = relationship("Patient")
+
+class Message(Base):
+    __tablename__ = "messages"
+    id = Column(Integer, primary_key=True, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id"))
+    receiver_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(String)
+    timestamp = Column(String)
+    
+    sender = relationship("User", foreign_keys=[sender_id])
+    receiver = relationship("User", foreign_keys=[receiver_id])
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    user = Column(String)
+    action = Column(String)
+    timestamp = Column(String)

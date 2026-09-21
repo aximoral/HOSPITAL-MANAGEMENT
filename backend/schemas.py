@@ -150,3 +150,67 @@ class ClinicalRecord(ClinicalRecordBase):
     doctor: Optional[Doctor] = None
     class Config:
         from_attributes = True
+
+# Bed Schemas
+class BedBase(BaseModel):
+    ward: str
+    bed_number: str
+    status: str = "Available"
+    patient_id: Optional[int] = None
+
+class BedCreate(BedBase):
+    pass
+
+class Bed(BedBase):
+    id: int
+    patient: Optional[Patient] = None
+    class Config:
+        from_attributes = True
+
+# Invoice Schemas
+class InvoiceBase(BaseModel):
+    patient_id: int
+    amount: float
+    description: str
+    status: str = "Pending"
+    created_at: str
+
+class InvoiceCreate(InvoiceBase):
+    pass
+
+class Invoice(InvoiceBase):
+    id: int
+    patient: Optional[Patient] = None
+    class Config:
+        from_attributes = True
+
+# Message Schemas
+class MessageBase(BaseModel):
+    sender_id: int
+    receiver_id: int
+    content: str
+    timestamp: str
+
+class MessageCreate(MessageBase):
+    pass
+
+class Message(MessageBase):
+    id: int
+    sender: Optional[User] = None
+    receiver: Optional[User] = None
+    class Config:
+        from_attributes = True
+
+# AuditLog Schemas
+class AuditLogBase(BaseModel):
+    user: str
+    action: str
+    timestamp: str
+
+class AuditLogCreate(AuditLogBase):
+    pass
+
+class AuditLog(AuditLogBase):
+    id: int
+    class Config:
+        from_attributes = True

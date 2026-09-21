@@ -199,3 +199,79 @@ def create_record(record: schemas.ClinicalRecordCreate, db: Session = Depends(ge
 @app.get("/records/", response_model=List[schemas.ClinicalRecord])
 def read_records(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return db.query(models.ClinicalRecord).offset(skip).limit(limit).all()
+
+
+# --- BEDS ---
+@app.post("/beds/", response_model=schemas.Bed)
+def create_bed(bed: schemas.BedCreate, db: Session = Depends(get_db)):
+    db_bed = models.Bed(**bed.model_dump())
+    db.add(db_bed)
+    db.commit()
+    db.refresh(db_bed)
+    return db_bed
+
+@app.get("/beds/", response_model=List[schemas.Bed])
+def read_beds(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return db.query(models.Bed).offset(skip).limit(limit).all()
+
+@app.put("/beds/{bed_id}", response_model=schemas.Bed)
+def update_bed(bed_id: int, bed: schemas.BedCreate, db: Session = Depends(get_db)):
+    db_bed = db.query(models.Bed).filter(models.Bed.id == bed_id).first()
+    if not db_bed:
+        raise HTTPException(status_code=404, detail="Bed not found")
+    
+    db_bed.status = bed.status
+    db_bed.patient_id = bed.patient_id
+    db.commit()
+    db.refresh(db_bed)
+    return db_bed
+
+# --- INVOICES ---
+@app.post("/invoices/", response_model=schemas.Invoice)
+def create_invoice(invoice: schemas.InvoiceCreate, db: Session = Depends(get_db)):
+    db_invoice = models.Invoice(**invoice.model_dump())
+    db.add(db_invoice)
+    db.commit()
+    db.refresh(db_invoice)
+    return db_invoice
+
+@app.get("/invoices/", response_model=List[schemas.Invoice])
+def read_invoices(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return db.query(models.Invoice).offset(skip).limit(limit).all()
+
+@app.put("/invoices/{invoice_id}/pay", response_model=schemas.Invoice)
+def pay_invoice(invoice_id: int, db: Session = Depends(get_db)):
+    db_invoice = db.query(models.Invoice).filter(models.Invoice.id == invoice_id).first()
+    if not db_invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    db_invoice.status = "Paid"
+    db.commit()
+    db.refresh(db_invoice)
+    return db_invoice
+
+# --- MESSAGES ---
+@app.post("/messages/", response_model=schemas.Message)
+def create_message(message: schemas.MessageCreate, db: Session = Depends(get_db)):
+    db_msg = models.Message(**message.model_dump())
+    db.add(db_msg)
+    db.commit()
+    db.refresh(db_msg)
+    return db_msg
+
+@app.get("/messages/", response_model=List[schemas.Message])
+def read_messages(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
+    return db.query(models.Message).offset(skip).limit(limit).all()
+
+# --- AUDITS ---
+@app.post("/audits/", response_model=schemas.AuditLog)
+def create_audit(audit: schemas.AuditLogCreate, db: Session = Depends(get_db)):
+    db_audit = models.AuditLog(**audit.model_dump())
+    db.add(db_audit)
+    db.commit()
+    db.refresh(db_audit)
+    return db_audit
+
+@app.get("/audits/", response_model=List[schemas.AuditLog])
+def read_audits(skip: int = 0, limit: int = 500, db: Session = Depends(get_db)):
+    return db.query(models.AuditLog).order_by(models.AuditLog.id.desc()).offset(skip).limit(limit).all()
