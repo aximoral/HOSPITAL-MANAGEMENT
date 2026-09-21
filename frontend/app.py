@@ -473,14 +473,14 @@ elif role == "doctor":
             cal_state = calendar(events=events, options={
                 "headerToolbar": {"left": "prev,next", "center": "title", "right": "today"},
                 "initialView": "dayGridMonth",
-                "height": 420,
+                "aspectRatio": 1.6,
                 "timeZone": "UTC"
             }, custom_css='''
             .fc-daygrid-day-frame, .fc-event { cursor: pointer !important; transition: background-color 0.2s ease !important; }
             .fc-daygrid-day-frame:hover { background-color: rgba(255, 255, 255, 0.05) !important; }
             .fc-day-today { background-color: transparent !important; }
-            .fc-scroller { overflow: hidden !important; }
-            .fc-daygrid-day-frame { min-height: 30px !important; }
+            .fc-scroller { overflow: visible !important; }
+            .fc-daygrid-day-frame { height: 100% !important; min-height: 100% !important; display: flex; flex-direction: column; }
             .fc-daygrid-day-events { min-height: 10px !important; margin-bottom: 0px !important; }
             .fc-daygrid-event-harness { margin-top: 1px !important; }
             .fc { border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important; }
@@ -640,14 +640,14 @@ elif role == "patient":
             cal_state = calendar(events=events, options={
                 "headerToolbar": {"left": "prev,next", "center": "title", "right": "today"},
                 "initialView": "dayGridMonth",
-                "height": 420,
+                "aspectRatio": 1.6,
                 "timeZone": "UTC"
             }, custom_css='''
             .fc-daygrid-day-frame, .fc-event { cursor: pointer !important; transition: background-color 0.2s ease !important; }
             .fc-daygrid-day-frame:hover { background-color: rgba(255, 255, 255, 0.05) !important; }
             .fc-day-today { background-color: transparent !important; }
-            .fc-scroller { overflow: hidden !important; }
-            .fc-daygrid-day-frame { min-height: 30px !important; }
+            .fc-scroller { overflow: visible !important; }
+            .fc-daygrid-day-frame { height: 100% !important; min-height: 100% !important; display: flex; flex-direction: column; }
             .fc-daygrid-day-events { min-height: 10px !important; margin-bottom: 0px !important; }
             .fc-daygrid-event-harness { margin-top: 1px !important; }
             .fc { border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important; }
