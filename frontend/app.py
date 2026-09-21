@@ -10,6 +10,11 @@ from streamlit_tags import st_tags
 
 API_URL = "http://127.0.0.1:8000"
 
+if "http_session" not in st.session_state:
+    st.session_state.http_session = requests.Session()
+session = st.session_state.http_session
+
+
 st.set_page_config(page_title="Hospital Management System", layout="wide")
 
 import streamlit.components.v1 as components
@@ -61,22 +66,37 @@ html, body, [class*="css"]  {
 }
 
 /* Inputs and Selectboxes */
-.stTextInput > div > div > input, 
-.stNumberInput > div > div > input, 
-.stSelectbox > div > div, 
-.stTextArea > div > div > textarea {
+div[data-baseweb="input"],
+div[data-baseweb="select"],
+div[data-baseweb="textarea"] {
+    background-color: #1a1e24 !important;
     border-radius: 10px !important;
     border: 1px solid rgba(255,255,255,0.1) !important;
-    background-color: #1a1e24 !important;
-    color: white !important;
-    transition: border 0.3s ease, box-shadow 0.3s ease !important;
+    transition: all 0.3s ease !important;
 }
-.stTextInput > div > div > input:focus, 
-.stNumberInput > div > div > input:focus,
-.stSelectbox > div > div:focus, 
-.stTextArea > div > div > textarea:focus {
-    border: 1px solid #00d2ff !important;
+
+div[data-baseweb="input"]:focus-within,
+div[data-baseweb="select"]:focus-within,
+div[data-baseweb="textarea"]:focus-within {
+    border-color: #00d2ff !important;
     box-shadow: 0 0 0 2px rgba(0, 210, 255, 0.2) !important;
+    outline: none !important;
+}
+
+/* Kill inner default borders */
+div[data-baseweb="input"] > input,
+div[data-baseweb="textarea"] > textarea {
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    color: white !important;
+}
+div[data-baseweb="input"] > input:focus,
+div[data-baseweb="textarea"] > textarea:focus {
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
 }
 
 /* Containers (Cards) */
@@ -142,7 +162,7 @@ tr:hover td {
 @st.cache_data(ttl=2)
 def fetch_data(endpoint):
     try:
-        response = requests.get(f"{API_URL}/{endpoint}/")
+        response = session.get(f"{API_URL}/{endpoint}/")
         if response.status_code == 200:
             return response.json()
         return []
@@ -272,7 +292,7 @@ if not st.session_state.logged_in:
         submitted = st.form_submit_button("Login")
         
         if submitted:
-            res = requests.post(f"{API_URL}/login/", json={"username": username, "password": password})
+            res = session.post(f"{API_URL}/login/", json={"username": username, "password": password})
             if res.status_code == 200:
                 data = res.json()
                 st.session_state.logged_in = True
@@ -398,9 +418,9 @@ role = st.session_state.role
 if role == "admin":
     menu = ["User Management", "Ward & Bed Management", "Hospital Queue Override", "System Audits", "Medicine Inventory"]
 elif role == "doctor":
-    menu = ["Encounter Queue", "Clinical Records (EHR)", "E-Prescribing", "Telemedicine Chat"]
+    menu = ["Encounter Queue", "Clinical Records (EHR)", "E-Prescribing", "Telemedicine Chat", "Settings"]
 elif role == "patient":
-    menu = ["Book Appointment", "My Health Record (EHR)", "My Prescriptions & Pharmacy", "Billing & Invoices", "Telemedicine Chat"]
+    menu = ["Book Appointment", "My Health Record (EHR)", "My Prescriptions & Pharmacy", "Billing & Invoices", "Telemedicine Chat", "Settings"]
 else:
     menu = []
 
@@ -482,14 +502,14 @@ if role == "admin":
             
             if st.form_submit_button("Create Account"):
                 # 1. Create User
-                user_res = requests.post(f"{API_URL}/users/", json={"username": new_user, "password": new_pass, "role": new_role})
+                user_res = session.post(f"{API_URL}/users/", json={"username": new_user, "password": new_pass, "role": new_role})
                 if user_res.status_code == 200:
                     uid = user_res.json()["id"]
                     # 2. Create Profile
                     if new_role == "doctor":
-                        requests.post(f"{API_URL}/doctors/", json={"user_id": uid, "name": name, "specialization": spec, "contact": contact})
+                        session.post(f"{API_URL}/doctors/", json={"user_id": uid, "name": name, "specialization": spec, "contact": contact})
                     elif new_role == "patient":
-                        requests.post(f"{API_URL}/patients/", json={"user_id": uid, "name": name, "age": age, "blood_group": blood, "contact": contact})
+                        session.post(f"{API_URL}/patients/", json={"user_id": uid, "name": name, "age": age, "blood_group": blood, "contact": contact})
                     st.success("Account provisioned successfully!")
                 else:
                     st.error("Error creating user.")
@@ -518,7 +538,7 @@ if role == "admin":
                             st.warning("Delete this user?", icon="⚠️")
                             y_col, n_col = st.columns(2)
                             if y_col.button("Yes", key=f"del_y_{user['id']}", type="primary"):
-                                res = requests.delete(f"{API_URL}/users/{user['id']}")
+                                res = session.delete(f"{API_URL}/users/{user['id']}")
                                 if res.status_code == 200:
                                     st.toast("User deleted successfully!", icon="✅")
                                     st.session_state.confirm_delete_user = None
@@ -547,9 +567,9 @@ if role == "admin":
         if not beds:
             st.info("Initializing hospital wards...")
             for i in range(1, 11):
-                requests.post(f"{API_URL}/beds/", json={"ward": "General Ward", "bed_number": f"G-{i}", "status": "Available"})
+                session.post(f"{API_URL}/beds/", json={"ward": "General Ward", "bed_number": f"G-{i}", "status": "Available"})
             for i in range(1, 6):
-                requests.post(f"{API_URL}/beds/", json={"ward": "ICU", "bed_number": f"ICU-{i}", "status": "Available"})
+                session.post(f"{API_URL}/beds/", json={"ward": "ICU", "bed_number": f"ICU-{i}", "status": "Available"})
             st.rerun()
             
         # Group beds by ward
@@ -572,9 +592,9 @@ if role == "admin":
                             with st.popover("Assign Patient", use_container_width=True):
                                 selected_p = st.selectbox("Select Patient", [p['id'] for p in patients], format_func=lambda x: next(p['name'] for p in patients if p['id']==x), key=f"sel_{bed['id']}")
                                 if st.button("Admit", key=f"admit_{bed['id']}", type="primary"):
-                                    requests.put(f"{API_URL}/beds/{bed['id']}", json={"ward": bed['ward'], "bed_number": bed['bed_number'], "status": "Occupied", "patient_id": selected_p})
+                                    session.put(f"{API_URL}/beds/{bed['id']}", json={"ward": bed['ward'], "bed_number": bed['bed_number'], "status": "Occupied", "patient_id": selected_p})
                                     # Log action
-                                    requests.post(f"{API_URL}/audits/", json={"user": "Admin", "action": f"Admitted Patient {selected_p} to {bed['bed_number']}", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                                    session.post(f"{API_URL}/audits/", json={"user": "Admin", "action": f"Admitted Patient {selected_p} to {bed['bed_number']}", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
                                     fetch_data.clear()
                                     st.rerun()
                                     
@@ -582,14 +602,14 @@ if role == "admin":
                             p_name = next((p['name'] for p in patients if p['id'] == bed['patient_id']), "Unknown")
                             st.caption(f"👤 {p_name}")
                             if st.button("Discharge", key=f"dis_{bed['id']}", use_container_width=True):
-                                requests.put(f"{API_URL}/beds/{bed['id']}", json={"ward": bed['ward'], "bed_number": bed['bed_number'], "status": "Cleaning", "patient_id": None})
-                                requests.post(f"{API_URL}/audits/", json={"user": "Admin", "action": f"Discharged Patient {bed['patient_id']} from {bed['bed_number']}", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                                session.put(f"{API_URL}/beds/{bed['id']}", json={"ward": bed['ward'], "bed_number": bed['bed_number'], "status": "Cleaning", "patient_id": None})
+                                session.post(f"{API_URL}/audits/", json={"user": "Admin", "action": f"Discharged Patient {bed['patient_id']} from {bed['bed_number']}", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
                                 fetch_data.clear()
                                 st.rerun()
                                 
                         elif bed['status'] == 'Cleaning':
                             if st.button("Mark Clean", key=f"clean_{bed['id']}", use_container_width=True):
-                                requests.put(f"{API_URL}/beds/{bed['id']}", json={"ward": bed['ward'], "bed_number": bed['bed_number'], "status": "Available", "patient_id": None})
+                                session.put(f"{API_URL}/beds/{bed['id']}", json={"ward": bed['ward'], "bed_number": bed['bed_number'], "status": "Available", "patient_id": None})
                                 fetch_data.clear()
                                 st.rerun()
 
@@ -622,7 +642,7 @@ if role == "admin":
                         new_status = st.selectbox("Action", opts, index=idx, key=f"adm_app_{app['id']}", label_visibility="collapsed")
                         
                         if new_status != status:
-                            requests.put(f"{API_URL}/appointments/{app['id']}", json={"status": new_status})
+                            session.put(f"{API_URL}/appointments/{app['id']}", json={"status": new_status})
                             st.rerun()
                             
             st.markdown("<hr>", unsafe_allow_html=True)
@@ -670,7 +690,7 @@ if role == "admin":
             price = st.number_input("Price", min_value=0.0)
             stock = st.number_input("Stock Quantity", min_value=0)
             if st.form_submit_button("Add Medicine"):
-                requests.post(f"{API_URL}/medicines/", json={"name": name, "description": desc, "price": price, "stock_quantity": stock})
+                session.post(f"{API_URL}/medicines/", json={"name": name, "description": desc, "price": price, "stock_quantity": stock})
                 st.success("Medicine added")
         render_table(pd.DataFrame(format_display_data(fetch_data("medicines"), "medicines")))
 
@@ -767,7 +787,7 @@ elif role == "doctor":
                                 new_status = st.selectbox("Action", opts, index=idx, key=f"doc_app_{app['id']}", label_visibility="collapsed")
                                 
                                 if new_status != status:
-                                    requests.put(f"{API_URL}/appointments/{app['id']}", json={"status": new_status})
+                                    session.put(f"{API_URL}/appointments/{app['id']}", json={"status": new_status})
                                     fetch_data.clear()
                                     st.rerun()
                 else:
@@ -788,7 +808,7 @@ elif role == "doctor":
             notes = st.text_area("Physician Consult Notes")
             
             if st.form_submit_button("Save Clinical Record"):
-                res = requests.post(f"{API_URL}/records/", json={
+                res = session.post(f"{API_URL}/records/", json={
                     "patient_id": patient_id, "doctor_id": doctor_id,
                     "diagnosis_history": history, "vitals": vitals, "physician_notes": notes
                 })
@@ -838,7 +858,7 @@ elif role == "doctor":
                         final_med_id = existing_med["id"]
                     else:
                         # Create the custom medicine dynamically in the DB first
-                        res = requests.post(f"{API_URL}/medicines/", json={
+                        res = session.post(f"{API_URL}/medicines/", json={
                             "name": med_name, "description": "Custom prescribed by doctor", "price": 0.0, "stock_quantity": 0
                         })
                         if res.status_code == 200:
@@ -848,7 +868,7 @@ elif role == "doctor":
                             final_med_id = None
                             
                     if final_med_id:
-                        res = requests.post(f"{API_URL}/prescriptions/", json={
+                        res = session.post(f"{API_URL}/prescriptions/", json={
                             "doctor_id": doctor_id, "patient_id": patient_id, "medicine_id": final_med_id,
                             "dosage": dosage, "instructions": instructions
                         })
@@ -888,9 +908,30 @@ elif role == "doctor":
             
             new_msg = st.chat_input("Type your message to the patient...")
             if new_msg:
-                requests.post(f"{API_URL}/messages/", json={"sender_id": doc_user_id, "receiver_id": patient_user_id, "content": new_msg, "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                session.post(f"{API_URL}/messages/", json={"sender_id": doc_user_id, "receiver_id": patient_user_id, "content": new_msg, "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
                 fetch_data.clear()
                 st.rerun()
+
+
+    elif choice == "Settings":
+        st.header("Account Settings")
+        st.write("Manage your account security.")
+        
+        with st.container(border=True):
+            st.subheader("Change Password")
+            new_pass = st.text_input("New Password", type="password")
+            confirm_pass = st.text_input("Confirm New Password", type="password")
+            if st.button("Update Password"):
+                if new_pass and new_pass == confirm_pass:
+                    res = session.put(f"{API_URL}/users/{st.session_state.user_id}/password", json={"password": new_pass})
+                    if res.status_code == 200:
+                        session.post(f"{API_URL}/audits/", json={"user": f"{role.capitalize()} {st.session_state.user_id}", "action": "Changed account password", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                        st.success("Password updated successfully!")
+                        st.balloons()
+                    else:
+                        st.error("Failed to update password.")
+                else:
+                    st.error("Passwords do not match or are empty.")
 
 # ==========================================
 # PATIENT VIEWS
@@ -953,7 +994,7 @@ elif role == "patient":
                     
                     if st.form_submit_button("Request Booking", type="primary"):
                         dt = f"{selected_date} {time_slot}"
-                        res = requests.post(f"{API_URL}/appointments/", json={
+                        res = session.post(f"{API_URL}/appointments/", json={
                             "patient_id": patient_id, "doctor_id": doc_id, "datetime": dt, "status": "Pending"
                         })
                         if res.status_code == 200:
@@ -1009,18 +1050,18 @@ elif role == "patient":
             col2.success(f"**Total Amount:** ₹{total_price:,.2f}")
             
             if st.button("Reserve"):
-                res = requests.post(f"{API_URL}/reservations/", json={
+                res = session.post(f"{API_URL}/reservations/", json={
                     "patient_id": patient_id, "medicine_id": med_id, "quantity": qty
                 })
                 if res.status_code == 200:
                     med_name = selected_med.get("name", "Medicine")
-                    requests.post(f"{API_URL}/invoices/", json={
+                    session.post(f"{API_URL}/invoices/", json={
                         "patient_id": patient_id,
                         "amount": total_price,
                         "description": f"Pharmacy: {qty}x {med_name}",
                         "created_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
                     })
-                    requests.post(f"{API_URL}/audits/", json={"user": f"Patient {patient_id}", "action": f"Reserved {qty}x {med_name}", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                    session.post(f"{API_URL}/audits/", json={"user": f"Patient {patient_id}", "action": f"Reserved {qty}x {med_name}", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
                     
                     st.toast("Reserved for pickup! 🎈 Invoice generated.")
                     fetch_data.clear()
@@ -1058,7 +1099,7 @@ elif role == "patient":
             
             new_msg = st.chat_input("Type your message to the doctor...")
             if new_msg:
-                requests.post(f"{API_URL}/messages/", json={"sender_id": pat_user_id, "receiver_id": doc_user_id, "content": new_msg, "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                session.post(f"{API_URL}/messages/", json={"sender_id": pat_user_id, "receiver_id": doc_user_id, "content": new_msg, "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
                 fetch_data.clear()
                 st.rerun()
 
@@ -1089,8 +1130,8 @@ elif role == "patient":
                                 c_a.text_input("Expiry", placeholder="MM/YY", key=f"exp_{inv['id']}")
                                 c_b.text_input("CVV", placeholder="123", key=f"cvv_{inv['id']}")
                                 if st.button("Submit Payment", type="primary", key=f"pay_{inv['id']}"):
-                                    requests.put(f"{API_URL}/invoices/{inv['id']}/pay")
-                                    requests.post(f"{API_URL}/audits/", json={"user": f"Patient {patient_id}", "action": f"Paid Invoice #{inv['id']} (₹{inv['amount']})", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                                    session.put(f"{API_URL}/invoices/{inv['id']}/pay")
+                                    session.post(f"{API_URL}/audits/", json={"user": f"Patient {patient_id}", "action": f"Paid Invoice #{inv['id']} (₹{inv['amount']})", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
                                     st.toast("Payment Successful! ✅")
                                     fetch_data.clear()
                                     st.rerun()
@@ -1104,3 +1145,23 @@ elif role == "patient":
                                 mime="application/pdf",
                                 key=f"pdf_{inv['id']}"
                             )
+
+    elif choice == "Settings":
+        st.header("Account Settings")
+        st.write("Manage your account security.")
+        
+        with st.container(border=True):
+            st.subheader("Change Password")
+            new_pass = st.text_input("New Password", type="password")
+            confirm_pass = st.text_input("Confirm New Password", type="password")
+            if st.button("Update Password"):
+                if new_pass and new_pass == confirm_pass:
+                    res = session.put(f"{API_URL}/users/{st.session_state.user_id}/password", json={"password": new_pass})
+                    if res.status_code == 200:
+                        session.post(f"{API_URL}/audits/", json={"user": f"{role.capitalize()} {st.session_state.user_id}", "action": "Changed account password", "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")})
+                        st.success("Password updated successfully!")
+                        st.balloons()
+                    else:
+                        st.error("Failed to update password.")
+                else:
+                    st.error("Passwords do not match or are empty.")

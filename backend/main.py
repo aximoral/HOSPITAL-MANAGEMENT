@@ -52,6 +52,21 @@ def login(data: schemas.LoginData, db: Session = Depends(get_db)):
     }
 
 # --- USERS ---
+
+from pydantic import BaseModel
+class PasswordUpdate(BaseModel):
+    password: str
+
+@app.put("/users/{user_id}/password")
+def update_password(user_id: int, data: PasswordUpdate, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    # In a real system, hash the password! (For mock purposes, storing plain text)
+    user.password = data.password
+    db.commit()
+    return {"msg": "Password updated successfully"}
+
 @app.post("/users/", response_model=schemas.User)
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
