@@ -10,6 +10,130 @@ st.set_page_config(page_title="Hospital Management System", layout="wide")
 
 import streamlit.components.v1 as components
 
+
+st.markdown('''
+<style>
+/* Import Inter font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+html, body, [class*="css"]  {
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* Sidebar styling */
+[data-testid="stSidebar"] {
+    background-color: #161b22 !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Buttons */
+.stButton > button {
+    border-radius: 12px !important;
+    border: none !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+    transition: all 0.2s ease-in-out !important;
+    font-weight: 600 !important;
+}
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0, 210, 255, 0.2) !important;
+}
+
+/* Primary Button Gradient */
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%) !important;
+    color: white !important;
+}
+
+/* Secondary Button */
+.stButton > button[kind="secondary"] {
+    background: #1f242d !important;
+    color: #e6e6e6 !important;
+    border: 1px solid rgba(255,255,255,0.05) !important;
+}
+.stButton > button[kind="secondary"]:hover {
+    border: 1px solid rgba(0, 210, 255, 0.5) !important;
+    color: #00d2ff !important;
+}
+
+/* Inputs and Selectboxes */
+.stTextInput > div > div > input, 
+.stNumberInput > div > div > input, 
+.stSelectbox > div > div, 
+.stTextArea > div > div > textarea {
+    border-radius: 10px !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    background-color: #1a1e24 !important;
+    color: white !important;
+    transition: border 0.3s ease, box-shadow 0.3s ease !important;
+}
+.stTextInput > div > div > input:focus, 
+.stNumberInput > div > div > input:focus,
+.stSelectbox > div > div:focus, 
+.stTextArea > div > div > textarea:focus {
+    border: 1px solid #00d2ff !important;
+    box-shadow: 0 0 0 2px rgba(0, 210, 255, 0.2) !important;
+}
+
+/* Containers (Cards) */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 16px !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    background: linear-gradient(180deg, rgba(30, 34, 43, 0.4) 0%, rgba(22, 27, 34, 0.6) 100%) !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important;
+}
+
+/* Form container */
+[data-testid="stForm"] {
+    border-radius: 16px !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background-color: #161b22 !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2) !important;
+}
+
+/* Alerts / Info boxes */
+.stAlert {
+    border-radius: 12px !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+}
+
+/* Markdown tables */
+table {
+    border-radius: 12px;
+    overflow: hidden;
+    border-collapse: collapse;
+    width: 100%;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+th {
+    background-color: #1a1e24 !important;
+    color: #00d2ff !important;
+    font-weight: 600 !important;
+    padding: 12px 15px !important;
+    border-bottom: 2px solid rgba(255,255,255,0.05) !important;
+}
+td {
+    background-color: #161b22 !important;
+    padding: 12px 15px !important;
+    border-bottom: 1px solid rgba(255,255,255,0.02) !important;
+}
+tr:hover td {
+    background-color: rgba(0, 210, 255, 0.03) !important;
+}
+
+/* Smooth Tabs if any */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+}
+.stTabs [data-baseweb="tab"] {
+    border-radius: 8px 8px 0 0 !important;
+    padding: 10px 20px !important;
+}
+</style>
+''', unsafe_allow_html=True)
+
+
 # Helper function to fetch data
 @st.cache_data(ttl=2)
 def fetch_data(endpoint):
