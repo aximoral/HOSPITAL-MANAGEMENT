@@ -367,9 +367,45 @@ if role == "admin":
                     st.error("Error creating user.")
                     
         st.subheader("System Users")
+        
+        if "confirm_delete_user" not in st.session_state:
+            st.session_state.confirm_delete_user = None
+            
         users = fetch_data("users")
         if users:
-            render_table(pd.DataFrame(format_display_data(users, "users")))
+            for user in users:
+                with st.container(border=True):
+                    c1, c2, c3, c4 = st.columns([1, 2, 2, 2])
+                    
+                    with c1:
+                        st.markdown(f"**ID:** {user['id']}")
+                    with c2:
+                        st.markdown(f"**Username:** {user['username']}")
+                    with c3:
+                        st.markdown(f"**Role:** {user.get('role', 'Unknown').capitalize()}")
+                        
+                    with c4:
+                        # If this user is currently marked for deletion confirmation
+                        if st.session_state.confirm_delete_user == user['id']:
+                            st.warning("Delete this user?", icon="⚠️")
+                            y_col, n_col = st.columns(2)
+                            if y_col.button("Yes", key=f"del_y_{user['id']}", type="primary"):
+                                res = requests.delete(f"{API_URL}/users/{user['id']}")
+                                if res.status_code == 200:
+                                    st.toast("User deleted successfully!", icon="✅")
+                                    st.session_state.confirm_delete_user = None
+                                    fetch_data.clear() # clear cache
+                                    st.rerun()
+                                else:
+                                    st.error("Error deleting user")
+                            if n_col.button("No", key=f"del_n_{user['id']}"):
+                                st.session_state.confirm_delete_user = None
+                                st.rerun()
+                        else:
+                            # Default Delete Button
+                            if st.button("🗑️ Delete", key=f"del_{user['id']}", type="secondary"):
+                                st.session_state.confirm_delete_user = user['id']
+                                st.rerun()
 
     elif choice == "Hospital Queue Override":
         st.header("Appointments & Queue (Override)")
