@@ -1,6 +1,10 @@
 fastapi
 uvicorn
-streamlit
 sqlalchemy
 pydantic
+reportlab
+streamlit
+pandas
 requests
+streamlit-calendar
+streamlit-tags

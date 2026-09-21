@@ -8,7 +8,8 @@ from backend.pdf_generator import generate_invoice_pdf
 from streamlit_calendar import calendar
 from streamlit_tags import st_tags
 
-API_URL = "http://127.0.0.1:8000"
+import os
+API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000")
 
 if "http_session" not in st.session_state:
     st.session_state.http_session = requests.Session()
