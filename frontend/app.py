@@ -1,3 +1,8 @@
+import sys
+import os
+# Ensure the root directory is in the Python path so it can find the 'backend' folder
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import streamlit as st
 import requests
 import pandas as pd
