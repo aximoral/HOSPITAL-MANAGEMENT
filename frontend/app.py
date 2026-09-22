@@ -292,7 +292,10 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     st.title("Hospital Management System - Login")
     
+    
     with st.form("login_form"):
+        st.caption(f"🔧 Debug: Connecting to API at: {API_URL}")
+
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
         submitted = st.form_submit_button("Login")
